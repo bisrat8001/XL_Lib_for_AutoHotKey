@@ -1,13 +1,29 @@
 ;***********************Get PXL to Excel********************************.
 ;***********************Excel Handles********************************.
-;~ XL_Handle(XL,1) ;1=Application 2=Workbook 3=Worksheet
+;~ XL_Handle(XL,1) ; pointer to Application   XL_Handle(XL,2) Pointer to Workbook
 XL_Handle(ByRef PXL,Sel){
 ControlGet, hwnd, hwnd, , Excel71, ahk_class XLMAIN ;identify the hwnd for Excel
-window := Acc_ObjectFromWindow(hwnd, -16) ;Assign hwnd to a pointer
-IfEqual,Sel,1, Return, PXL:= window.application ;Handle to Excel Application
-IfEqual,Sel,2, Return, PXL:= window.parent ;Handlle to active Workbook
-IfEqual,Sel,3, Return, PXL:= window.activesheet ;Handle to Active Worksheet
+IfEqual,Sel,1, Return, PXL:= ObjectFromWindow(hwnd,-16).application ;Handle to Excel Application
+IfEqual,Sel,2, Return, PXL:= ObjectFromWindow(hwnd,-16).parent ;Handlle to active Workbook
+IfEqual,Sel,3, Return, PXL:= ObjectFromWindow(hwnd,-16).activesheet ;Handle to Active Worksheet
 }
+;***borrowd & tweaked from Acc.ahk Standard Library*** by Sean  Updated by jethrow*****************
+ObjectFromWindow(hWnd, idObject = -4){
+(if Not h)?h:=DllCall("LoadLibrary","Str","oleacc","Ptr")
+    If DllCall("oleacc\AccessibleObjectFromWindow","Ptr",hWnd,"UInt",idObject&=0xFFFFFFFF,"Ptr",-VarSetCapacity(IID,16)+NumPut(idObject==0xFFFFFFF0?0x46000000000000C0:0x719B3800AA000C81,NumPut(idObject==0xFFFFFFF0?0x0000000000020400:0x11CF3C3D618736E0,IID,"Int64"),"Int64"), "Ptr*", pacc)=0
+    Return	ComObjEnwrap(9,pacc,1)
+}
+
+
+;~ XL_Handle(XL,1) ;1=Application 2=Workbook 3=Worksheet
+;~ XL_Handle(ByRef PXL,Sel){
+;~ ControlGet, hwnd, hwnd, , Excel71, ahk_class XLMAIN ;identify the hwnd for Excel
+;~ window := Acc_ObjectFromWindow(hwnd, -16) ;Assign hwnd to a pointer
+;~ IfEqual,Sel,1, Return, PXL:= window.application ;Handle to Excel Application
+;~ IfEqual,Sel,2, Return, PXL:= window.parent ;Handlle to active Workbook
+;~ IfEqual,Sel,3, Return, PXL:= window.activesheet ;Handle to Active Worksheet
+;~ }
+
 ;***********************Show name of object handle is referencing********************************.
 ;~ XL_Reference(XL) ;will pop up with a message box showing what pointer is referencing
 XL_Reference(PXL){
@@ -48,12 +64,12 @@ IfLessOrEqual,LastCol,26, Return, (Chr(64+FirstCol))
 	Else IfGreater,LastCol,26, return, Chr((FirstCol-1)/26+64) . Chr(mod((FirstCol- 1),26)+65)
 }
 ;***********************Used Columns********************************.
-;~ LC:=XL_Used_Cols_Nmb(PXL)
+;~ LC:=XL_Used_Cols_Nmb(XL)
 XL_Used_Cols_Nmb(PXL){
 Return, PXL.Application.ActiveSheet.UsedRange.Columns.Count
 }
 ;***********************Last Column********************************.
-;~ LC:=XL_Last_Col_Nmb(PXL)
+;~ LC:=XL_Last_Col_Nmb(XL)
 XL_Last_Col_Nmb(PXL){
 Return, PXL.Application.ActiveSheet.UsedRange.Columns(PXL.Application.ActiveSheet.UsedRange.Columns.Count).Column
 }
@@ -69,9 +85,6 @@ IfLessOrEqual,LastCol,26, Return, (Chr(64+LastCol))
 XL_Used_RG(PXL,Header=1){
 IfEqual,Header,0,Return, XL_First_Col_Alpha(PXL) . XL_First_Row(PXL) ":" XL_Last_Col_Alpha(PXL) . XL_Last_Row(PXL)
 IfEqual,Header,1,Return, XL_First_Col_Alpha(PXL) . XL_First_Row(PXL)+1 ":" XL_Last_Col_Alpha(PXL) . XL_Last_Row(PXL)
-  
-;~ Return, XL_First_Col_Alpha(PXL) . XL_First_Row(PXL) ":" XL_Last_Col_Alpha(PXL) . XL_Last_Row(PXL)
-;~ Return, XL_First_Col_Alpha(PXL) . XL_First_Row(PXL) ":" XL_Last_Col_Alpha(PXL) . XL_Last_Row(PXL)
 }
 ;***********************Numeric Column to string********************************.
 ;~ XL_Col_To_Char(26)
@@ -90,13 +103,15 @@ XL_String_To_Number(Column){
            index := index * 26 + ascii - 65 + 1    ;Base = 26 (26 letters)
         else { return
         } }
-        return, index 
+        return, index
 }
 ;***********************Freeze Panes********************************.
 ;~ XL_Freeze(XL,Row:="1",Col:="B") ;Col A will not include cols which is default so leave out if unwanted
+;***********************Freeze Panes in Excel********************************.
 XL_Freeze(PXL,Row="",Col="A"){
-PXL.Application.ActiveWindow.FreezePanes := False
-PXL.Application.ActiveSheet.Range(Col . Row+1).Select ;Helps it work more intuitivly so 1 includes 1 not start at
+PXL.Application.ActiveWindow.FreezePanes := False ;unfreeze in case already frozen
+IfEqual,row,,return ;if no row value passed row;  turn off freeze panes
+PXL.Application.ActiveSheet.Range(Col . Row+1).Select ;Helps it work more intuitivly so 1 includes 1 not start at zero
 PXL.Application.ActiveWindow.FreezePanes := True
 }
 
@@ -124,29 +139,56 @@ XL_Format_Wrap(PXL,RG="",Wrap="1"){ ;defaults to Wrapping
 PXL.Application.ActiveSheet.Range(RG).WrapText:=Wrap
 }
 
+;***********Shrink to fit*******************
+;~ XL_Format_Shrink_to_Fit(XL,RG:="A1",Shrink:=0) ;1=Wrap text, 0=no
+XL_Format_Shrink_to_Fit(PXL,RG="",Shrink="1"){ ;defaults to Shrink to fit
+(Shrink=1)?(PXL.Application.ActiveSheet.Range(RG).WrapText:=0) ;if setting Shrink to fit need to turn-off Wrapping
+PXL.Application.ActiveSheet.Range(RG).ShrinkToFit :=Shrink
+}
+
+
 ;***********************Merge / Unmerge cells********************************.
-;~ XL_Merge_Cells(XL,RG:="A1:B4",Merge:=True) ;set to true if you want them merged
-XL_Merge_Cells(PXL,RG="",Merge="False"){ ;default is unmerge
-  PXL.Application.ActiveSheet.Range(RG).MergeCells:=Merge
+;~ XL_Merge_Cells(XL,RG:="A12:B13",Warn:=0,Merge:=1) ;set to true if you want them merged
+XL_Merge_Cells(PXL,RG,warn=0,Merge=0){ ;default is unmerge and warn off
+PXL.Application.DisplayAlerts := warn ;Warn about unmerge keeping only one cell
+PXL.Application.ActiveSheet.Range(RG).MergeCells:=Merge ;set merge for range
+(warn=0)?(PXL.Application.DisplayAlerts:=1) ;if warnings were turned off, turn back on
 }
 ;***********************Font size, type, ********************************.
-;~ XL_Format_Font(XL,RG:="A1:B4",Font:="Arial Narrow",Size:=15) ;Arial, Arial Narrow, Calibri
+;~ XL_Format_Font(XL,RG:="A1:B1",Font:="Arial Narrow",Size:=25) ;Arial, Arial Narrow, Calibri,Book Antiqua
 XL_Format_Font(PXL,RG="",Font="Arial",Size="11"){
 PXL.Application.ActiveSheet.Range(RG).Font.Name:=Font
 PXL.Application.ActiveSheet.Range(RG).Font.Size:=Size
 }
+
+;***********************Font bold, normal, italic, Underline********************************.
+;~ XL_Format_Format(XL,RG:="A1:B1",Bold:=1,Italic:=0,Underline:=3) ;Underline 1 thru 5
+XL_Format_Format(PXL,RG="",Bold=0,Italic=0,Underline=0){
+PXL.Application.ActiveSheet.Range(RG).Font.Bold:= bold
+PXL.Application.ActiveSheet.Range(RG).Font.Italic:=Italic
+(Underline="0")?(PXL.Application.ActiveSheet.Range(RG).Font.Underline:=-4142):(PXL.Application.ActiveSheet.Range(RG).Font.Underline:=Underline+1)
+}
+
+;***********Cell Shading*******************
+;2=none 3=Red 4=Lt Grn 6=Brt Yel 7=Mag 8=brt blu 15=Grey 17=Lt purp  19=Lt Yell 20=Lt blu 22=Salm 26=Brt Pnk
+;~ XL_Format_Cell_Shading(XLs,RG:="A1:H1",Color:=28)
+XL_Format_Cell_Shading(PXL,RG="",Color=0){
+PXL.Application.ActiveSheet.Range(RG).Interior.ColorIndex :=Color
+}
+
 ;***********************Cell Number format********************************.
-;~ XL_Format_Number(XL,RG:="A1:B4",Format:="0,00.0") ;0,000 ;0,00.0 ;0000 ;000.0 ;.0% ;$0 ;m/dd/yy ;m/dd ;dd/mm/yyyy
-XL_Format_Number(PXL,RG="",format="0,000"){
+;~ XL_Format_Number(XL,RG:="A1:B4",Format:="#,##0") ;#,##0 ;0,000 ;0,00.0 ;0000 ;000.0 ;.0% ;$0 ;m/dd/yy ;m/dd ;dd/mm/yyyy
+XL_Format_Number(PXL,RG="",format="#,##0"){
 PXL.Application.ActiveSheet.Range(RG).NumberFormat := Format
 }
-;***********************Cell shading and Font color********************************.
+
+;***********************Search- find text- Cell shading and Font color********************************.
 ;~ XL_Color(PXL:=XL,RG:="A1:D50",Value:="Joe",Color:="2",Font:=1) ;change the font color
 ;~ XL_Color(PXL:=XL,RG:="A1:D50",Value:="Joe",Color:="1") ;change the interior shading
 ;***********************to do ********************************.
 ;*this is one or the other-  redo it so it does both***************.
 XL_Color(PXL="",RG="",Value="",Color="1",Font="0"){
-if  f:=PXL.Application.ActiveSheet.Range[RG].Find[Value]{ ; if the number can be found in the Range
+if  f:=PXL.Application.ActiveSheet.Range[RG].Find[Value]{ ; if the text can be found in the Range
     first :=f.Address  ; save the address of the first found match
  	 Loop
          If (Font=0){
@@ -155,53 +197,60 @@ if  f:=PXL.Application.ActiveSheet.Range[RG].Find[Value]{ ; if the number can be
          f.Font.ColorIndex :=Color, f :=PXL.Application.ActiveSheet.Range[RG].FindNext[f] ;color font & move to next found cell
      }Until (f.Address = first) ; stop looking when we're back to the first found cell
 }}
+
 ;***********************Cell Borders (box)********************************.
-;~ XL_Border(XL,RG:="a20:b21",Weight:=2,Line:=2) ;1=Hairline 2=Thin 3=Med 4=Thick  ;Line1=Solid 2=Dash 4=DashDot 5=DashDotDot
+;***********Note- some weights and linestyles overwrite each other*******************
+;~ XL_Border(XL,RG:="a20:b21",Weight:=2,Line:=2) ;Weight 1=Hairline 2=Thin 3=Med 4=Thick  ***  Line 0=None 1=Solid 2=Dash 4=DashDot 5=DashDotDot
+;***********************Cell Borders (box)********************************.
 XL_Border(PXL,RG="",Weight="3",Line="1"){
+IfEqual,Line,0,SetEnv,Line,-4142 ; Excel constant for no border
 Loop, 4{
+PXL.Application.ActiveSheet.Range(RG).Borders(A_Index+6).Weight := Weight
 PXL.Application.ActiveSheet.Range(RG).Borders(A_Index+6).LineStyle := Line
-PXL.Application.ActiveSheet.Range(RG).Borders(A_Index+6).Weight := Weight 
 }}
+
 ;***********************Row Height********************************.
 ;~ XL_Row_Height(XL,RG:="1:4=-1|10:13=50|21=15") ;rows first then height -1 is auto
 XL_Row_Height(PXL,RG=""){
-    Loop, Parse, RG,| ;parse the range by the pipe |
-   {
-      RegExMatch(A_LoopField,"(\d+:?\d+?)=(-?\d+)",Vars) ;separate range from Row heights
-If (Vars2=-1)
-   PXL.Application.ActiveSheet.Rows(Vars1).AutoFit
-      Else,PXL.Application.ActiveSheet.Rows(Vars1).RowHeight:=Vars2
-}}
+for k, v in StrSplit(rg,"|") ;Iterate over array
+   (StrSplit(v,"=").2="-1")?(PXL.Application.ActiveSheet.rows(StrSplit(v,"=").1).AutoFit):(PXL.Application.ActiveSheet.rows(StrSplit(v,"=").1).RowHeight:=StrSplit(v,"=").2)
+}
+
 ;***********************Column Widths********************************.
 ;~ XL_Col_Width_Set(XL,RG:="A:B=-1|D:F=-1|H=15|K=3") ;-1 is auto
 XL_Col_Width_Set(PXL,RG=""){
-    Loop, Parse, RG,| ;parse the range by the pipe |
-   {
-      RegExMatch(A_LoopField,"(\S+)=(-?\d+)",Vars) ;separate range from col widths
-If (Vars2=-1)
-   PXL.Application.ActiveSheet.Columns(Vars1).AutoFit
-      Else,PXL.Application.ActiveSheet.Columns(Vars1).ColumnWidth:=Vars2
-}}
+for k, v in StrSplit(rg,"|") ;Iterate over array
+   (StrSplit(v,"=").2="-1")?(PXL.Application.ActiveSheet.Columns(StrSplit(v,"=").1).AutoFit):(PXL.Application.ActiveSheet.Columns(StrSplit(v,"=").1).ColumnWidth:=StrSplit(v,"=").2)
+}
 
 ;***********************Column Insert********************************.
-;~ XL_Col_Insert(XL,RG:="B:f",WD:=15)   ;~ XL_Col_Insert(XL,RG:="B")
 XL_Col_Insert(PXL,RG="",WD:="5"){ ;Default width is 5
 PXL.Application.ActiveSheet.Columns(RG).Insert(-4161).Select
 PXL.Application.ActiveSheet.Columns(RG).ColumnWidth:=WD
 }
+
 ;***********************Row Insert********************************.
 ;~ XL_Row_Insert(XL,RG:="1:5",HT:=16)  ;~ XL_Row_Insert(XL,RG:="1")
 XL_Row_Insert(PXL,RG="",HT:="15"){ ;default height is 15
 PXL.Application.ActiveSheet.Rows(RG).Insert(-4161).Select
 PXL.Application.ActiveSheet.Rows(RG).RowHeight:=HT
 }
+
 ;***********************Column Delete********************************.
-;~ XL_Col_Delete(XL,RG:="A:B|D:F|Z|K|H") ;
 XL_Col_Delete(PXL,RG=""){
-Sort,Values, R U D| ;reverse order and dedupe
-   Loop, Parse, RG, |
-          PXL.Application.ActiveSheet.Columns(A_Loopfield).Delete
+   for j,k in StrSplit(rg,"|")
+	(instr(k,":")=1)?list.=k ",":(list.=k ":" k ",") ;need to make for two if only 1 col
+PXL.Application.ActiveSheet.Range(SubStr(list,1,(StrLen(list)-1))).Delete ;use list but remove final comma
 }
+
+;***********************Row Delete********************************.
+;~ XL_Row_Delete(XL,RG:="4:5|9|67|9|10") ;range or single but cannot overlap
+XL_Row_Delete(PXL,RG=""){
+for j,k in StrSplit(rg,"|")
+    (instr(k,":")=1)?list.=k ",":(list.=k ":" k ",") ;need to make for two if only 1 Row
+    PXL.Application.ActiveSheet.Range(SubStr(list,1,(StrLen(list)-1))).Delete ;use list but remove final comma
+}
+
 ;***********************Delete Column Based on Value********************************.
 ;~ XL_Delete_Col_Based_on_Value(XL,RG:="A1:H1",Val:="Joe")
 XL_Delete_Col_Based_on_Value(PXL,RG="",Val=""){
@@ -210,38 +259,38 @@ For C in PXL.Application.ActiveSheet.Range(RG)
      PXL.Application.ActiveSheet.Range(c.Address).EntireColumn.Clearcontents
 Try PXL.Application.ActiveSheet.Range(RG).SpecialCells(4).EntireColumn.Delete Shift:=-4159     ;Left
 }}
-;***********************Row Delete********************************.
-;~ XL_Row_Delete(XL,RG:="4:5|9|67|9|10") ;can be out of order and have duplicats
-XL_Row_Delete(PXL,RG=""){
-  Sort,RG, N R U D| ;reverse order and dedupe
-  Loop, Parse, RG, |
-      PXL.Application.ActiveSheet.Rows(A_Loopfield).Delete
-}
-;***********************Row delete based on Coloumn value********************************.
+
+;***********************Row delete based on Column value********************************.
 ;~ XL_Delete_Row_Based_on_Value(XL,RG:="B1:B20",Val:="Joe")
 XL_Delete_Row_Based_on_Value(PXL,RG="",Val=""){
 For C in PXL.Application.ActiveSheet.Range(RG)
     If (c.Value=Val)
      PXL.Application.ActiveSheet.Range(c.Address).EntireRow.Clearcontents
-TRY PXL.Application.ActiveSheet.Range(RG).SpecialCells(4).EntireRow.Delete Shift:=-4162 ;Up ;xlToLeft = -4159
+TRY PXL.Application.ActiveSheet.Range(RG).SpecialCells(4).EntireRow.Delete ,Shift:=-4162 ;Up ;xlToLeft = -4159
 }
+
+;***********looping over cells*******************
+For Cell in xl.range(XL.Selection.Address) {
+Current_Cell:=Cell.Address(0,0) ;get absolue reference; change to 1 if want releative
+MsgBox % cell.value
+}
+
 
 ;*******************************************************.
 ;***********************Clipboard actions********************************.
 ;*******************************************************.
 ;***********************Copy to a delimited String Variable********************************.
 ;~ XL_Copy_to_Var(XL,RG:="A1:A5",Delim:=",")
-XL_Copy_to_Var(PXL,RG="",Delim="|"){ ;pipe is defualt 
+XL_Copy_to_Var(PXL,RG="",Delim="|"){ ;pipe is defualt
 PXL.Application.ActiveSheet.range(RG).copy ;copy to clipboard
 Clipboard := RegExReplace(Clipboard , "\v+", Delim)
 StringTrimRight, Clipboard, Clipboard, 1 ;trim last delimiter
 }
 
 ;***********************Paste ********************************.
-;~ XL_Paste(XL,Source_RG:="C1",Dest_RG:="F1:F10",Paste:=1) 
-XL_Paste(PXL,Source_RG="",Dest_RG="",Paste=""){ ;1=All 2=Values 3=Comments 4=Formats 5=Formulas 6=Validation 7=All Except Borders
-                                                ;8=Col Widths 11=Formulas and Number formats 12=Values and Number formats
-IfEqual,Paste,1,SetEnv,Paste,-4104 ;xlPasteAll
+;~ XL_Paste(XL,Source_RG:="C1",Dest_RG:="F1:F10",Paste:=1)
+XL_Paste(PXL,Source_RG="",Dest_RG="",Paste=""){       ;1=All 2=Values 3=Comments 4=Formats 5=Formulas 6=Validation 7=All Except Borders
+IfEqual,Paste,1,SetEnv,Paste,-4104 ;xlPasteAll        ;8=Col Widths 11=Formulas and Number formats 12=Values and Number formats
 IfEqual,Paste,2,SetEnv,Paste,-4163 ;xlPasteValues
 IfEqual,Paste,3,SetEnv,Paste,-4144 ;xlPasteComments
 IfEqual,Paste,4,SetEnv,Paste,-4122 ;xlPasteFormats
@@ -249,7 +298,7 @@ IfEqual,Paste,5,SetEnv,Paste,-4123 ;xlPasteFormulas
 PXL.Application.ActiveSheet.Range(Source_RG).Copy
 PXL.Application.ActiveSheet.Range(Dest_RG).PasteSpecial(Paste)
 }
-;***********************deselct cells ********************************.
+;***********************deselect cells ********************************.
 XL_UnSelect(XL) ;Unselects highlighted cells
 XL_UnSelect(PXL){
 PXL.Application.ActiveSheet.CutCopyMode := False
@@ -269,12 +318,13 @@ PXL.Application.ActiveSheet.Range(Vars1).Value:=Vars2
 XL_Add_Comment(PXL,RG="",Comment="",Vis=0,Size=11,Font="Arial",ForeClr=5){
 If (PXL.Application.ActiveSheet.Range(RG).comment.text) <> ""
    PXL.Application.ActiveSheet.Range(RG).Comment.Delete
-PXL.Application.ActiveSheet.Range(RG).Addcomment(Comment)  
+PXL.Application.ActiveSheet.Range(RG).Addcomment(Comment)
 PXL.Application.ActiveSheet.Range(RG).Comment.Visible := Vis
 PXL.Application.ActiveSheet.Range(RG).Comment.Shape.Fill.ForeColor.SchemeColor:=ForeClr
 PXL.Application.ActiveSheet.Range(RG).Comment.Shape.TextFrame.Characters.Font.size:=Size
 PXL.Application.ActiveSheet.Range(RG).Comment.Shape.TextFrame.Characters.Font.Name:=Font
 }
+;***********NEEDO TO FIX this: ToDO  Use tripple quotes like this: XL.Application.ActiveSheet.Range("D3").Value:= "=Hyperlink(""" NARRPR_Link . """,""" Add_Street """)"
 ;***********************Insert Hyperlink********************************.
 ;url needs to be in format https://www.google.com
 ;~ XL_Insert_URL(XL,URL:="B1",Display:="C1",RG:="B8")
@@ -293,19 +343,25 @@ XL_Hyperlink_Offset_Row(PXL,RG="",URL="",Freindly=""){
 For Cell in PXL.Application.ActiveSheet.Range(RG){
   Cell.Value:="=Hyperlink(""" . Cell.offset(URL,0).value . """,""" . Cell.Offset(Freindly,0).Value . """)"
   }}
-  
+
 ;***********************Remove Hyperlink********************************.
 ;~ XL_Clear_URL(XLs,RG="B1:B" . LR){
 XL_Clear_URL(PXL,RG=""){
    For C in RG
       c.Hyperlinks.Delete
 }
-  
+
 ;***********************insert email link********************************.
-;~ XL_Insert_Email(XL,email:="B2",Subj:="Your going to read this",Display:="B3",RG:="B7")
-XL_Insert_Email(PXL,email="",Subj="",Display="",RG=""){
-PXL.Application.ActiveSheet.Range(RG).Value:="=Hyperlink(""Mailto:" . PXL.Application.ActiveSheet.range(email).value . "?Subject=" . Subj """,""" . PXl.Application.ActiveSheet.Range(Display).Value . """)"
+;~  XL_Insert_Email(XL,email:="A3",Disp:="B3",Subj:="C3",Body:="D3",Dest:="E3")
+
+XL_Insert_Email(PXL,email="",Disp="",Subj="",Body="",Dest=""){
+PXL.Application.ActiveSheet.Range(Dest).Value:="=Hyperlink(""Mailto:"
+ . PXL.Application.ActiveSheet.range(email).value
+ . "?Subject=" . PXL.Application.ActiveSheet.Range(Subj).Value
+ . "&Body="    . PXL.Application.ActiveSheet.Range(Body).Value
+ . ""","""     . PXL.Application.ActiveSheet.Range(Disp).Value . """)"
 }
+
 ;***********************Insert email OFFSET in Columns (data in rows)********************************.
 ;~ XL_email_Offset_Col(XL,RG:="E1:E8",URL:="-3",Freindly:="-2",Subj:="-1") ;Neg values are col to left / Pos are col to right
 XL_email_Offset_Col(PXL,RG="",URL="",Freindly="",Subj=""){
@@ -318,6 +374,25 @@ XL_email_Offset_Row(PXL,RG="",URL="",Freindly="",Subj=""){
 For Cell in PXL.Application.ActiveSheet.Range(RG){
   Cell.Value:="=Hyperlink(""mailto:" . Cell.offset(URL,0).value . "?Subject=" . Cell.offset(Subj,0).Value . """,""" . Cell.Offset(Freindly,0).Value . """)"
   }}
+;**********************Dictionary Search / REplace - multiple in range*********************************
+;~ {"ACC":"Account Spec.":"RMK":"Rel Mark":"RM":"Rel Mark":"UNI":"University":"NIV":"University":"RFI":"RFID":"HVA":"HVAL":"PWR":"Power":"COR":"Corporate":"WBU":"Wireless":"":"Not-Coded"}
+;~ Dict_Replacer(XL,rg:=RG_Hay, {"ACC":"Account Spec.":"RMK":"Rel Mark":"RM":"Rel Mark":"UNI":"University":"NIV":"University":"RFI":"RFID":"HVA":"HVAL":"PWR":"Power":"COR":"Corporate":"WBU":"Wireless":"":"Not-Coded"})
+Dict_Replacer(PXL,rg="",Terms=""){
+For Cell in PXL.Range[RG]
+	for key, val in Terms ;Terms is Object passed in form of dictionary
+      if Cell.Value=(key)  ;look for key
+         Cell.Value:=Val   ;if found, change to corresponding value
+}
+
+;**********************replace null*********************************
+;~  XL_Replace_Null(PXL,RG)
+;***********replace Null*******************
+XL_Replace_Null(PXL,RG:=""){
+if (! RG)
+    RG:=XL_Used_RG(PXL,0)
+PXL.Range(RG).Replace("#NULL!","")  ;
+}
+
 ;***********************Search / Replace********************************.
 ;~ XL_Replace(XL,RG:="A1:A39",Sch:="Text",Rep:="New Text",MC:="True",CellCont:=1) ;CC=1 Exact, 2=Any
 XL_Replace(PXL,RG="",Sch="",Rep="",MC="",CellCont=""){
@@ -326,33 +401,38 @@ For c in PXL.Application.ActiveSheet.Range[RG]
 c.Replace(What:=Sch,Replacement:=Rep,LookAt:=CellCont,SearchOrder:=1,MatchCase:=MC,MatchByte:=True, ComObjParameter(0xB, -1) , ComObjParameter(0xB, -1))
 }
 
-;***********************Find columns baed on header********************************.
-;~ XL_Find_Headers_in_Cols(XL,Cols,Values:="LEADID|SMOWNERID|SMCREATORID|MODIFIEDBY")
-XL_Find_Headers_in_Cols(PXL,ByRef Found_Cols,Values=""){
-LoopCount:=XL_Last_Col_Nmb(PXL)
-Loop, %LoopCount% {
-Col:=loopCount-(A_index-1)
-Header:=PXL.Application.ActiveSheet.cells(1,Col).Value
-    Loop, parse, Values, |
-        If (Header=A_LoopField)
-Found_Cols.="|" . XL_Col_To_Char(PXL.Application.ActiveSheet.Columns(Col).Column)
-}StringTrimLeft, Found_Cols, Found_Cols,1
+;********************search***Find columns based on header********************************.
+;~  loc:=XL_Find_Headers_in_Cols(XL,["email","country","Age"]) ;pass search terms as an array
+;~  MsgBox % "email: "  loc["email"]   .  "`nCountry: " loc["country"]   .  "`nAge: " loc["Age"]
+XL_Find_Headers_in_Cols(PXL,Values){
+Headers:={} ;need to create the object for storing Key-value pairs of search term and Location
+for k, Search_Term in Values{
+	Loop, % XL_Last_Col_Nmb(PXL){ ;loop over all used columns
+		if (PXL.Application.ActiveSheet.cells(1,A_Index).Value=Search_Term) ;if cell in row 1, column A_index = search term
+			Headers[Search_Term]:=XL_Col_To_Char(A_Index) . "1" ;set column to value in Hearders object
+		}} return Headers ;return the key-value pairs Object
 }
 
+;~  XL_Clear(XL,RG:="A1:A8",All:=0,Format:=0,Content:=0,Hyperlink:=1,Notes:=0,Outline:=0,Comments:=1) ;0 clears contents but leaves formatting 1 clears both
 ;***********************Clear********************************.
-;~ XL_Clear(XL,RG:="A1:B5",Clear:=0) ;0 clears contents but leaves formatting 1 clears both
-XL_Clear(PXL,RG="",Clear="1"){
-   If (Clear=1)
-PXL.Application.ActiveSheet.Range(RG).Clear
-Else PXL.Application.ActiveSheet.Range(RG).ClearContents
+XL_Clear(PXL,RG="",All=0,Format=0,Content=0,Hyperlink=0,Notes=0,Outline=0,Comments=0){
+	; https://analysistabs.com/excel-vba/clear-cells-data-range-worksheet/  ;https://msdn.microsoft.com/en-us/vba/excel-vba/articles/range-clearcontents-method-excel
+      (All=1)?(PXL.Application.ActiveSheet.Range(RG).Clear)           ;clear the range of cells including Formats
+   (Format=1)?(PXL.Application.ActiveSheet.Range(RG).ClearFormats)    ;clear Formats but leave data
+  (Content=1)?(PXL.Application.ActiveSheet.Range(RG).ClearContents)   ;clear Data but leave Formats
+(Hyperlink=1)?(PXL.Application.ActiveSheet.Range(RG).ClearHyperlinks) ;clear Hyperlinks but leave formatting & Data
+    (Notes=1)?(PXL.Application.ActiveSheet.Range(RG).ClearNotes)      ;clear Notes
+  (Outline=1)?(PXL.Application.ActiveSheet.Range(RG).ClearOutline)    ;clear Outline
+ (Comments=1)?(PXL.Application.ActiveSheet.Range(RG).ClearComments)   ;clear Comments
 }
+
 
 ;***********************Delete blank columns********************************.
 ;Jetrhow wrote this http://www.autohotkey.com/board/topic/69033-basic-ahk-l-com-tutorial-for-excel/?p=557697
 ;~ XL_Delete_Blank_Col(XL)
 XL_Delete_Blank_Col(PXL){
 for column in PXL.Application.ActiveSheet.UsedRange.Columns
-	if Not PXL.Application.WorkSheetFunction.counta(column)
+	if Not PXL.Application.WorkSheetFunction.count(column)
 		delete_range .= column.entireColumn.address(0,0) ","
 Try PXL.Application.Range(Trim(delete_range,",")).delete()
 Catch
@@ -384,13 +464,13 @@ Header:=PXL.Application.ActiveSheet.cells(1,Col).Value
 
 ;***********************Remove Duplicates / Dedupe********************************.
 ;~ XL_Remove_Dup_Used_Range(XL)
-XL_Remove_Dup_Used_Range(PXL){
-Dedupe_CL:=PXL.Application.Activesheet.Rows(XL_First_Row(PXL)).Find("EMAIL").column
-MsgBox % XL_Used_RG(PXL)
+;~ XL_Remove_Dup_Used_Range(XL)
+XL_Remove_Dup_Used_Range(PXL,Header=""){
+Dedupe_CL:=PXL.Application.Activesheet.Rows(XL_First_Row(PXL)).Find(Header).column
 PXL.Application.ActiveSheet.Range(XL_Used_RG(PXL)).RemoveDuplicates(Columns:=Dedupe_CL).Header:=1 ;added header
 }
 ;***********************Sort by Column ********************************.
-;~ XL_Sort_UsedRange(XL,Head:=1,Sort_Col:="A",Ord:="d") ;Sort used range w/without header 
+;~ XL_Sort_UsedRange(XL,Head:=1,Sort_Col:="A",Ord:="d") ;Sort used range w/without header
 XL_Sort_UsedRange(PXL,Head="1",Sort_Col="",Ord="A"){
 Range:=XL_Used_RG(PXL,Header:=Head)
 StringUpper,Ord,Ord
@@ -414,6 +494,12 @@ PXL.Application.ActiveSheet.Range(XL_Used_RG(PXL,Header:=1)).Sort(PXL.Applicatio
 XL_Filter_Clear(PXL){
 PXL.Application.ActiveSheet.Range(XL_Used_RG(PXL,Header:=0)).AutoFilter ;Clear autofilter
 }
+
+;***********Add filters*******************
+XL_Add_Filters(PXL){
+PXL.Application.ActiveSheet.Range("A:G").AutoFilter ;Clear autofilter
+}
+
 ;***********************Filter Used Range********************************.
 ;~ XL_Filter_Used_Range(XL,Filt_Col:="a",FilterA:="joe",FilterB:="king")
 XL_Filter_Used_Range(PXL,Filt_Col="",FilterA="",FilterB=""){
@@ -432,11 +518,23 @@ PXL.Application.ActiveSheet.Range(XL_Used_RG(PXL,Header:=0)).AutoFilter(XL_Strin
 ;  *******************************************************
 ;**************************File********************************
 ;  *******************************************************.
-
+;~ XL_Start_Get(XL,1) ;store pointer to Excel Application in XL
+;~ XL_Start_Get(XL,0) ;store pointer to Excel- start off hidden
+XL_Start_Get(ByRef PXL,Vis=1){
+Try {
+PXL := ComObjActive("Excel.Application") ;handle
+PXL.Visible := Vis
+}
+Catch{
+PXL := ComObjCreate("Excel.Application") ;handle
+PXL.Visible := Vis ; 1=Visible/Default 0=hidden
+}
+Return,PXL
+}
 ;***********************Open********************************.
 ;***********************open excel********************************.
-;~ XL_Open(Wrb,Vis:=1,Try:=1,Path:="B:\Americas.xlsx") ;WRB is pointer to workbook, Vis=0 for hidden Try=0 for new Excel
-XL_Open(ByRef Wrb,vis=1,Try=1,Path=""){
+;~ XL_Open(XL,Vis:=1,Try:=1,Path:="B:\Americas.xlsx") ;XL is pointer to workbook, Vis=0 for hidden Try=0 for new Excel
+XL_Open(ByRef PXL,vis=1,Try=1,Path=""){
 If (Try=1){
 Try PXL := ComObjActive("Excel.Application") ;handle
 Catch
@@ -446,42 +544,41 @@ PXL.Visible := vis ;1=Visible/Default 0=hidden
 PXL := ComObjCreate("Excel.Application") ;handle
 PXL.Visible := vis ;1=Visible/Default 0=hidden
 }
-WRB:=PXL.Workbooks.Open(path) ;wrb =handle to specific workbook
-Return,WRB
+PXL:=PXL.Workbooks.Open(path) ;wrb =handle to specific workbook
+Return,PXL
 }
 ;***********Detect and opens Tab & Comma delimited, HTML, XML and Excel 2003/2007 with pre-set defaults********************************.
 ;~ XL_Multi_Opener(XL,FullFileName:="C:\Diet.txt")
 ;~ XL_Multi_Opener(XL,FullFileName:="C:\Diet.csV")
-;~ XL_Multi_Opener(XL,FullFileName:="C:\DB\Custom\My Docs\Files\Joe.htm")
+;~ XL_Multi_Opener(XL,FullFileName:="B:\Custom\My Docs\Files\Joe.htm")
 ;~ XL_Multi_Opener(XL,FullFileName:="B:\Progs\AutoHotkey_L\TI\Engage\API\Mailings Feb 01, 2013.xlsx")
 ;~ XL_Multi_Opener(XL,FullFileName:="B:\Progs\AutoHotkey_L\TI\Engage\API\mailing.xml")
 XL_Multi_Opener(PXL,FullFileName=""){
 Ext := RegExReplace(FullFileName,"(.*)\.(\w{3,4})", "$L2") ;grab Extension and Lowercase it
-If (EXT="txt") or (Ext="csv") or (Ext="tab"){
+If (EXT="txt") or (EXT="txt") or (Ext="csv") or (Ext="tab"){
 TabD:="False", csvD:="False"
 IfEqual,ext,txt, SetEnv, tabD, True ;Sets tabD to 1 if extension is txt
+IfEqual,ext,tsv, SetEnv, tabD, True ;Sets tabD to 1 if extension is txt
 IfEqual,ext,csv, SetEnv, csvD, True ;Sets csvD to 1 if extension is csv
-PXL.Application.Workbooks.OpenText(FullFileName) , Origin:=65001, StartRow:=1, DataType:=xlDelimited,
- TextQualifier:=xlDoubleQuote, ConsecutiveDelimiter:=False, Tab:=tabD, Semicolon:=False, Comma:=csvD, Space:=False, Other:=False,
- FieldInfo:=Array(Array(1, 1), Array(2, 1)), TrailingMinusNumbers:=True
+PXL.Application.Workbooks.OpenText(FullFileName), origin:=65001, StartRow:=1, DataType:=1, TextQualifier:=1, ConsecutiveDelimiter:=False, Tab:=tabD, Semicolon:=False, Comma:=csvD, Space:=False, Other:=False, FieldInfo:=Array(Array(1, 1), Array(2, 1)), TrailingMinusNumbers:=True
 } Else if (Ext="xml"){
  PXL.Application.Workbooks.OpenXML(FullFileName, 1, 2) ;.LoadOption.2 ;import xml file
- } Else If (Ext contains xls,htm) { 
+ } Else If (Ext contains xls,htm) {
  PXL.Application.Workbooks.Open(FullFileName) ;Opens Excel 2003,2007 and html
 }}
 ;***********************Save as********************************.
-;~ XL_Save(Wrb,File:="C:\try",Format:="2007",WarnOverWrite:=0) ;2007 
+;~ XL_Save(Wrb,File:="C:\try",Format:="2007",WarnOverWrite:=0) ;2007
 ;~ XL_Save(Wrb,File:="C:\try",Format:="2007",WarnOverWrite:=0) ;2007 format no warn on overwrite
 ;~ XL_Save(Wrb,File:="C:\try",Format:="CSV",WarnOverWrite:=1) ;CSV format warn on overwrite
 ;~ XL_Save(Wrb,File:="C:\try",Format:="TAB",WarnOverWrite:=0) ;Tab delimited no warn on overwrite
-XL_Save(XL,File="",Format="2007",WarnOverWrite=0){
-XL.Application.DisplayAlerts := WarnOverWrite ;doesn't ask if I care about overwriting the file
-IfEqual,Format,TAB,SetEnv,Format,-4158 ;Tab 
+XL_Save(PXL,File="",Format="2007",WarnOverWrite=0){
+PXL.Application.DisplayAlerts := WarnOverWrite ;doesn't ask if I care about overwriting the file
+IfEqual,Format,TAB,SetEnv,Format,-4158 ;Tab
 IfEqual,Format,CSV,SetEnv,Format,6 ;CSV
 IfEqual,Format,2003,SetEnv,Format,56 ;2003 format
 IfEqual,Format,2007,SetEnv,Format,51 ;2007 format
-XL.Application.ActiveWorkbook.Saveas(File, Format) ;save it
-XL.Application.DisplayAlerts := true ;Turn back on warnings
+PXL.Application.ActiveWorkbook.Saveas(File, Format) ;save it
+PXL.Application.DisplayAlerts := true ;Turn back on warnings
 }
 
 ;***********************Quit********************************.
@@ -489,3 +586,32 @@ XL_Quit(ByRef PXL){
 PXL.Application.Quit
 PXL:=""
 }
+
+;***********************MRU*********************************.
+;~ XL_Handle(XL,1) ;1=Application 2=Workbook 3=Worksheet
+;~ MRU(FileName:="")
+XL_MRU(FileName=""){
+XL_Handle(XL,1)
+XL.RecentFiles.Add(FileName) ;adds file to recently accessed file list
+mruList := []
+For file in ComObj("Excel.Application").RecentFiles
+   if  (A_Index <> 1)
+       mruList.Insert(file.name)
+mruList.Insert(RegExReplace(Filename,"^[A-Z]:")) ;adds to MRU list
+}
+
+
+;***********only show if hidden*******************
+;~ If ! cell.Entirerow.Hidden ;
+    ;~ MsgBox % cell.value " is not hidden @ " cell.address(0,0) ;0,0 tells it not to be relative
+;~ return
+
+;***********Find autofiltered row*******************
+;~ xl.activesheet.autofilter.Range.row
+
+;***********close active workbook*******************
+XL_Close_Active_Workbook(){
+;~XL.Workbook.Close(1) ;close need pointer to workbook
+XL.ActiveWorkbook.Close
+}
+
